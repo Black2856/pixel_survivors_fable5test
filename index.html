@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXEL SURVIVORS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="xpbar"><div id="xpfill"></div><span id="lvltext">LV 1</span></div>
+    <div id="hud-row">
+      <div id="weapon-icons"></div>
+      <div id="kills">&#9760; 0</div>
+    </div>
+    <div id="timer">00:00</div>
+    <div id="combo" class="hidden">x0</div>
+    <div id="bossbar" class="hidden">
+      <div id="bossname"></div>
+      <div id="bossbar-track"><div id="bossfill"></div></div>
+    </div>
+  </div>
+
+  <div id="announce"></div>
+  <div id="banner" class="hidden"></div>
+
+  <div id="title-screen" class="screen">
+    <div id="title-inner">
+      <h1 id="game-title">PIXEL<br>SURVIVORS</h1>
+      <div id="title-sub">— 真夜中のドット黙示録 —</div>
+      <div id="press-start">PRESS ANY KEY</div>
+      <div id="controls-hint">WASD / 矢印キー で移動 ・ 攻撃は自動 ・ ESC で一時停止</div>
+    </div>
+  </div>
+
+  <div id="levelup-screen" class="screen hidden">
+    <h2 id="lvup-title">LEVEL UP!</h2>
+    <div id="cards"></div>
+    <button id="reroll-btn" class="reroll-btn">リロール (3)</button>
+    <div id="lvup-hint">クリック または 1〜4 キーで選択 ・ R でリロール</div>
+  </div>
+
+  <div id="gameover-screen" class="screen hidden">
+    <h2 class="go-title">YOU DIED</h2>
+    <div class="stats" id="go-stats"></div>
+    <button class="retry-btn" id="btn-retry">RETRY (R)</button>
+  </div>
+
+  <div id="victory-screen" class="screen hidden">
+    <h2 class="v-title">VICTORY!</h2>
+    <div class="v-sub">STAGE 3 クリア! 死神を打ち倒した…</div>
+    <div class="stats" id="v-stats"></div>
+    <div class="v-btns">
+      <button class="retry-btn endless" id="btn-endless">ENDLESS MODE (Enter)</button>
+      <button class="retry-btn" id="btn-totitle">タイトルへ戻る</button>
+    </div>
+  </div>
+
+  <div id="pause-screen" class="screen hidden">
+    <h2>PAUSED</h2>
+    <div class="pause-hint">ESC で再開 ・ M でミュート</div>
+  </div>
+
+  <div id="hurt-vignette"></div>
+  <div id="flash"></div>
+</div>
+
+<script src="js/sprites.js"></script>
+<script src="js/sprites-extra.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
