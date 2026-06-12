@@ -692,7 +692,8 @@ function updWeapons(dt) {
             if (!tgt) { w.t = 0.5; break; }
             a = Math.atan2(tgt.y - player.y, tgt.x - player.x);
           }
-          w.t = st.cd * player.cdMult;
+          // 事象の地平線: CD+15%
+          w.t = st.cd * player.cdMult * (player.artifacts.horizon ? 1.15 : 1);
           projs.push({
             kind: 'bhole', x: player.x, y: player.y - 6,
             vx: Math.cos(a) * 300, vy: Math.sin(a) * 300,
@@ -736,7 +737,7 @@ function updWeapons(dt) {
   }
 }
 
-// ブラックホール生成(事象の地平線: ダメージ-40%・持続+100%・吸引1体毎に範囲+5%・範囲内の敵の攻撃力-50%)
+// ブラックホール生成(事象の地平線: CD+15%・ダメージ-55%・持続+100%・吸引1体毎に範囲+5%(最大+100%)・範囲内の敵の攻撃力-50%)
 function spawnBlackhole(x, y) {
   const st = wstat('bhole');
   const af = player.artifacts;
@@ -745,7 +746,7 @@ function spawnBlackhole(x, y) {
     kind: 'bhole', x, y,
     r: r0, baseR: r0, grabbed: af.horizon ? new Set() : null,
     t: 0, dur: st.dur * (af.horizon ? 2 : 1), tick: 0,
-    dmg: st.dmg * (af.horizon ? 0.6 : 1), pull: st.pull,
+    dmg: st.dmg * (af.horizon ? 0.45 : 1), pull: st.pull,
   });
   addRing(x, y, st.radius * player.areaMult, '#b06ef0', 3);
   AudioMan.bholeS();
@@ -763,10 +764,10 @@ function updZones(dt) {
       forEachInRadius(z.x, z.y, z.r, e => {
         if (z.grabbed) e.weakT = 0.15; // 事象の地平線: 範囲内の敵は攻撃力-50%
         if (e.boss) return;
-        // 事象の地平線: 吸引した敵1体につき範囲+5%
+        // 事象の地平線: 吸引した敵1体につき範囲+5%(最大+100%)
         if (z.grabbed && !z.grabbed.has(e.id)) {
           z.grabbed.add(e.id);
-          z.r = z.baseR * (1 + 0.05 * z.grabbed.size);
+          z.r = z.baseR * (1 + Math.min(1, 0.05 * z.grabbed.size));
         }
         const d = Math.sqrt(dist2(e.x, e.y, z.x, z.y));
         if (d < 6) return;
@@ -997,9 +998,9 @@ function dropGem(x, y, v) {
 // ============================================================
 function loopMul() { return 1 + (S.loop - 1) * 1.2; }
 
-// 敵の与ダメージ(凍傷: スタック毎に攻撃力-2% / 事象の地平線: 範囲内の敵は攻撃力-50%)
+// 敵の与ダメージ(周回毎に攻撃力+5% / 凍傷: スタック毎に攻撃力-2% / 事象の地平線: 範囲内の敵は攻撃力-50%)
 function enemyDmg(e, base = e.dmg) {
-  let d = base;
+  let d = base * (1 + (S.loop - 1) * 0.05);
   if (e.frostT > 0 && e.frostSt) d *= 1 - 0.02 * e.frostSt;
   if (e.weakT > 0) d *= 0.5;
   return Math.max(1, Math.round(d));
