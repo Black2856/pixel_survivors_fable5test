@@ -685,7 +685,7 @@ function spawnBlackhole(x, y) {
     kind: 'bhole', x, y,
     r: st.radius * player.areaMult,
     t: 0, dur: st.dur * (af.horizon ? 2 : 1), tick: 0,
-    dmg: st.dmg * (af.horizon ? 0.5 : 1), pull: st.pull,
+    dmg: st.dmg * (af.horizon ? 0.6 : 1), pull: st.pull,
   });
   addRing(x, y, st.radius * player.areaMult, '#b06ef0', 3);
   AudioMan.bholeS();
