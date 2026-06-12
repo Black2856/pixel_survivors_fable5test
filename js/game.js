@@ -925,10 +925,10 @@ function updProjs(dt) {
 // ============================================================
 // ダメージ・撃破
 // ============================================================
-// 渇血の棘: 最大出血スタック = 6 + (対象武器の所持数 - 1) × 3(全所持で12)
+// 渇血の棘: 最大出血スタック = 対象武器の所持数に応じて 6/12/20
 function bleedMax() {
   const n = ['katana', 'blade', 'axe'].filter(k => player.weapons[k]).length;
-  return 6 + Math.max(0, n - 1) * 3;
+  return [6, 6, 12, 20][n];
 }
 
 function hitEnemy(e, base, ang, o = {}) {
@@ -937,8 +937,10 @@ function hitEnemy(e, base, ang, o = {}) {
   if (e.bleedT > 0 && e.bleedSt) dmg *= 1 + 0.05 * e.bleedSt; // 出血: スタック毎に被ダメージ+5%
   // 吹雪の羅針盤: 凍傷スタック毎に被ダメージ+1%
   if (player.artifacts.blizzwalk && e.frostT > 0 && e.frostSt) dmg *= 1 + 0.01 * e.frostSt;
+  // 処刑人の刻印: クリティカルダメージ+50%・非クリティカルダメージ-20%
   const crit = Math.random() < critNow();
-  if (crit) dmg *= 2 + (player.artifacts.critdmg ? 0.25 : 0);
+  if (crit) dmg *= 2 + (player.artifacts.critdmg ? 0.5 : 0);
+  else if (player.artifacts.critdmg) dmg *= 0.8;
   dmg = Math.max(1, Math.round(dmg));
   e.hp -= dmg;
   S.totalDmg += dmg;
