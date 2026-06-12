@@ -119,6 +119,7 @@ function initRun() {
     boss: null, pendingLv: 0, hudDirty: true,
     loop: 1, loopStart: 0, rerolls: 3, victoryT: 0,
     weaponSlots: 5, passiveSlots: 5,
+    aimManual: false, // Shiftで切替: 手動照準モード(マウス方向へ攻撃)
   };
   player = {
     x: 0, y: 0, hp: 100, maxhp: 100, baseSpeed: 165, level: 1, xp: 0, xpNext: xpFor(1),
@@ -171,6 +172,9 @@ function critNow() {
 // 入力
 // ============================================================
 const keys = {};
+// 手動照準用のマウス位置(画面座標)
+const mouse = { x: W / 2, y: H / 2 };
+addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
 // タイトルは2段階入力: 初回の操作でタイトル曲を再生(ブラウザの自動再生制限対策)、次の操作で開始
 let titleArmed = false;
 function armTitle() {
@@ -184,6 +188,13 @@ addEventListener('keydown', e => {
   AudioMan.unlock();
   keys[e.code] = true;
   if (e.code === 'KeyM') AudioMan.toggleMute();
+  // Shiftで自動照準⇔手動照準(マウス方向)を切替
+  if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat && state === 'play') {
+    S.aimManual = !S.aimManual;
+    AudioMan.select();
+    announce(S.aimManual ? 'MANUAL AIM' : 'AUTO AIM',
+             S.aimManual ? 'マウスの方向へ攻撃' : '最も近い敵を自動で攻撃');
+  }
   if (e.code === 'Escape') {
     if (state === 'play') pauseGame();
     else if (state === 'pause') resumeGame();
@@ -460,6 +471,11 @@ function addWeapon(name) {
   else player.weapons[name] = { lv: 1, t: 0.3, tick: 0, angle: 0, slashN: 0, slashT: 0 };
   S.hudDirty = true;
 }
+
+// 手動照準: マウス位置(ワールド座標)への角度
+function aimAngle() {
+  return Math.atan2(mouse.y + cam.y - player.y, mouse.x + cam.x - player.x);
+}
 function wstat(name) { return DATA.weapons[name].lv[player.weapons[name].lv - 1]; }
 
 function updWeapons(dt) {
@@ -472,8 +488,9 @@ function updWeapons(dt) {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = st.cd * player.cdMult;
-          const tgt = nearestEnemy(player.x, player.y, 560 * player.rangeMult);
-          const base = tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
+          const tgt = S.aimManual ? null : nearestEnemy(player.x, player.y, 560 * player.rangeMult);
+          const base = S.aimManual ? aimAngle()
+                     : tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
                            : (player.facing > 0 ? 0 : Math.PI);
           // 双面の魔鏡: 反対方向にも同時発射(ダメージ -25%)
           const mirror = player.artifacts.mirror;
@@ -581,9 +598,12 @@ function updWeapons(dt) {
         if (w.t <= 0) {
           w.t = st.cd * player.cdMult;
           for (let i = 0; i < st.count; i++) {
+            // 手動照準: 全弾マウス側へ投げる
+            const sgn = S.aimManual ? (Math.cos(aimAngle()) < 0 ? -1 : 1) : (Math.random() < 0.5 ? -1 : 1);
+            const bias = S.aimManual ? sgn * 40 : player.facing * 40;
             projs.push({
               kind: 'axe', x: player.x, y: player.y - 10,
-              vx: (rand(60, 190) * (Math.random() < 0.5 ? -1 : 1) * (i % 2 ? 1 : 0.6) + player.facing * 40) * player.rangeMult,
+              vx: (rand(60, 190) * sgn * (i % 2 ? 1 : 0.6) + bias) * player.rangeMult,
               vy: rand(-470, -350), g: 760,
               dmg: st.dmg, life: 3.2, t: 0, rot: 0, hit: new Set(),
             });
@@ -617,8 +637,9 @@ function updWeapons(dt) {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = st.cd * player.cdMult;
-          const tgt = nearestEnemy(player.x, player.y, 560);
-          const base = tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
+          const tgt = S.aimManual ? null : nearestEnemy(player.x, player.y, 560);
+          const base = S.aimManual ? aimAngle()
+                     : tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
                            : (player.facing > 0 ? 0 : Math.PI);
           for (let i = 0; i < st.count; i++) {
             const a = base + (i - (st.count - 1) / 2) * 0.22;
@@ -638,13 +659,20 @@ function updWeapons(dt) {
       case 'blizzard': {
         w.t -= dt;
         if (w.t <= 0) {
-          const tgt = nearestEnemy(player.x, player.y, Math.max(W, H) / 2);
-          if (!tgt) { w.t = 0.5; break; }
+          // 手動照準: マウス位置に設置 / 自動: 最寄りの敵の位置
+          let bx, by;
+          if (S.aimManual) {
+            bx = mouse.x + cam.x; by = mouse.y + cam.y;
+          } else {
+            const tgt = nearestEnemy(player.x, player.y, Math.max(W, H) / 2);
+            if (!tgt) { w.t = 0.5; break; }
+            bx = tgt.x; by = tgt.y;
+          }
           w.t = st.cd * player.cdMult;
           // 吹雪の羅針盤: 範囲-15%・持続-15%
           const walk = player.artifacts.blizzwalk;
           zones.push({
-            kind: 'bliz', x: tgt.x, y: tgt.y,
+            kind: 'bliz', x: bx, y: by,
             r: st.radius * player.areaMult * (walk ? 0.85 : 1),
             t: 0, dur: st.dur * (walk ? 0.85 : 1), tick: 0, dmg: st.dmg,
           });
@@ -656,10 +684,15 @@ function updWeapons(dt) {
       case 'bhole': {
         w.t -= dt;
         if (w.t <= 0) {
-          const tgt = nearestEnemy(player.x, player.y, 520 * player.rangeMult);
-          if (!tgt) { w.t = 0.5; break; }
+          let a;
+          if (S.aimManual) {
+            a = aimAngle();
+          } else {
+            const tgt = nearestEnemy(player.x, player.y, 520 * player.rangeMult);
+            if (!tgt) { w.t = 0.5; break; }
+            a = Math.atan2(tgt.y - player.y, tgt.x - player.x);
+          }
           w.t = st.cd * player.cdMult;
-          const a = Math.atan2(tgt.y - player.y, tgt.x - player.x);
           projs.push({
             kind: 'bhole', x: player.x, y: player.y - 6,
             vx: Math.cos(a) * 300, vy: Math.sin(a) * 300,
@@ -683,9 +716,10 @@ function updWeapons(dt) {
             w.slashT = 0.14;
             w.slashN--;
             const reach = st.aoe * player.areaMult;
-            // 斬撃ごとに最も近い敵へ再照準(いなければ向いている方向)
-            const tgt = nearestEnemy(player.x, player.y, 480);
-            const ang = tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
+            // 斬撃ごとに最も近い敵へ再照準(手動照準中はマウス方向・いなければ向いている方向)
+            const tgt = S.aimManual ? null : nearestEnemy(player.x, player.y, 480);
+            const ang = S.aimManual ? aimAngle()
+                      : tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
                             : (player.facing > 0 ? 0 : Math.PI);
             const cx = player.x + Math.cos(ang) * reach * 0.55;
             const cy = player.y + Math.sin(ang) * reach * 0.55;
@@ -890,6 +924,12 @@ function updProjs(dt) {
 // ============================================================
 // ダメージ・撃破
 // ============================================================
+// 渇血の棘: 最大出血スタック = 6 + (対象武器の所持数 - 1) × 3(全所持で12)
+function bleedMax() {
+  const n = ['katana', 'blade', 'axe'].filter(k => player.weapons[k]).length;
+  return 6 + Math.max(0, n - 1) * 3;
+}
+
 function hitEnemy(e, base, ang, o = {}) {
   if (e.hp <= 0) return;
   let dmg = base * dmgMultNow();
@@ -902,7 +942,7 @@ function hitEnemy(e, base, ang, o = {}) {
   e.hp -= dmg;
   S.totalDmg += dmg;
   e.flash = 0.08;
-  if (o.bleed) { e.bleedT = 5; e.bleedSt = Math.min(6, (e.bleedSt || 0) + 1); }
+  if (o.bleed) { e.bleedT = 5; e.bleedSt = Math.min(bleedMax(), (e.bleedSt || 0) + 1); }
   if (o.burn) {
     e.burnDps = Math.max(e.burnDps || 0, o.burn);
     e.burnT = 3;
@@ -1929,6 +1969,26 @@ function render() {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+
+  // 手動照準モードの照準カーソル
+  if (state === 'play' && S.aimManual && !player.dead) {
+    const cx = mouse.x, cy = mouse.y;
+    ctx.save();
+    ctx.strokeStyle = '#ffd23f';
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 2;
+    const g = 6 + Math.sin(S.time * 6) * 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 10, 0, TAU);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - g - 8, cy); ctx.lineTo(cx - g, cy);
+    ctx.moveTo(cx + g, cy); ctx.lineTo(cx + g + 8, cy);
+    ctx.moveTo(cx, cy - g - 8); ctx.lineTo(cx, cy - g);
+    ctx.moveTo(cx, cy + g); ctx.lineTo(cx, cy + g + 8);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // ダメージ数字
   ctx.textAlign = 'center';
