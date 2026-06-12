@@ -180,12 +180,90 @@
     'ww........ww',
   ];
 
+  // ── アイコン: ブラックホール(暗黒の渦) 12x12 ──
+  const ipBh = { O, p: '#b06ef0', m: '#7a3fd0', k: '#0a0614', w: '#ffffff' };
+  const ioBh = [
+    '............',
+    '....pppp....',
+    '..pp.w..pp..',
+    '.p..mmmm..p.',
+    '.p.mkkkkm.p.',
+    '.pmkkkkkkmp.',
+    '.pmkkkkkkmp.',
+    '.p.mkkkkm.p.',
+    '.p..mmmm..p.',
+    '..pp..w.pp..',
+    '....pppp....',
+    '............',
+  ];
+
+  // ── アイコン: 刀(斜めの刃) 12x12 ──
+  const ipKa = { O, w: '#e8f4ff', s: '#9fb8d8', g: '#ffd23f', h: '#7a4a2a' };
+  const ioKatana = [
+    '.........OO.',
+    '........OwwO',
+    '.......OwsO.',
+    '......OwsO..',
+    '.....OwsO...',
+    '....OwsO....',
+    '...OwsO.....',
+    '.OOOwO......',
+    '.OggO.......',
+    '..OhOO......',
+    '.OhO........',
+    '.OO.........',
+  ];
+
+  // ── アイコン: スキップ(ダイス・ランダム強化) 12x12 ──
+  const ipSk = { O, w: '#f0f0f8', d: '#23233a', s: '#c8c8dc' };
+  const ioSkip = [
+    '............',
+    '.OOOOOOOOOO.',
+    '.OwwwwwwwwO.',
+    '.OwdwwwwdwO.',
+    '.OwwwwwwwwO.',
+    '.OwwwddwwwO.',
+    '.OwwwddwwwO.',
+    '.OwwwwwwwwO.',
+    '.OwdwwwwdwO.',
+    '.OssssssssO.',
+    '.OOOOOOOOOO.',
+    '............',
+  ];
+
+  // ── 弾: 重力弾 8x8 2フレーム ──
+  const bpP = { O, p: '#b06ef0', m: '#7a3fd0', k: '#0a0614', w: '#ffffff' };
+  const bf0 = [
+    '...OO...',
+    '..OppO..',
+    '.OpmmpO.',
+    'OpmkkwpO',
+    'OpwkkmpO',
+    '.OpmmpO.',
+    '..OppO..',
+    '...OO...',
+  ];
+  const bf1 = [
+    '...OO...',
+    '..OmpO..',
+    '.OmwkpO.',
+    'OmkkkmpO',
+    'OpmkkkmO',
+    '.OpkwmO.',
+    '..OpmO..',
+    '...OO...',
+  ];
+
   SPRITES.icons.range    = { frames: [px(ipRg, ioRange)], w: 12, h: 12 };
   SPRITES.icons.size     = { frames: [px(ipSz, ioSize)], w: 12, h: 12 };
   SPRITES.icons.fire     = { frames: [px(ipF, ioFire)], w: 12, h: 12 };
   SPRITES.icons.blizzard = { frames: [px(ipB, ioBliz)], w: 12, h: 12 };
   SPRITES.icons.area     = { frames: [px(ipA, ioArea)], w: 12, h: 12 };
   SPRITES.icons.regen    = { frames: [px(ipR, ioRegen)], w: 12, h: 12 };
+  SPRITES.icons.bhole    = { frames: [px(ipBh, ioBh)], w: 12, h: 12 };
+  SPRITES.icons.katana   = { frames: [px(ipKa, ioKatana)], w: 12, h: 12 };
+  SPRITES.icons.skip     = { frames: [px(ipSk, ioSkip)], w: 12, h: 12 };
   SPRITES.proj.fire      = { frames: [px(fpP, ff0), px(fpP, ff1)], w: 8, h: 8 };
+  SPRITES.proj.bhole     = { frames: [px(bpP, bf0), px(bpP, bf1)], w: 8, h: 8 };
   SPRITES.items.artifact = { frames: [px(apP, af0), px(apP, af1)], w: 10, h: 12 };
 })();

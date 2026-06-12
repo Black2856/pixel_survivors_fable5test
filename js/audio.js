@@ -126,6 +126,8 @@
     magnetS(){ this.tone(300, 1600, 0.3, { type: 'sine', vol: 0.14 }); },
     fireS()  { this.noise(0.12, { vol: 0.05, f: 1400 }); this.tone(320, 140, 0.12, { type: 'sawtooth', vol: 0.04 }); },
     blizzS() { this.noise(0.45, { vol: 0.07, f: 800 }); this.tone(950, 380, 0.35, { type: 'sine', vol: 0.04 }); },
+    slashS() { this.noise(0.08, { vol: 0.09, f: 2600 }); this.tone(820, 240, 0.06, { type: 'sawtooth', vol: 0.05 }); },
+    bholeS() { this.tone(900, 50, 0.55, { type: 'sine', vol: 0.14 }); this.noise(0.4, { vol: 0.08, f: 240 }); },
     artifact(){ [330, 415, 523, 659, 880, 1108].forEach((f, i) => this.tone(f, f, 0.16, { vol: 0.12, delay: i * 0.07 })); },
     death()  { this.tone(420, 40, 1.0, { type: 'sawtooth', vol: 0.25 }); this.noise(0.8, { vol: 0.2, f: 400 }); },
   };

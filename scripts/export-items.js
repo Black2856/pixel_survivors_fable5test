@@ -12,7 +12,7 @@ const DATA = new Function(src + '; return DATA;')();
 
 const HEADER = ['カテゴリ', 'ID', '名称', 'レベル', '説明',
   'CD(秒)', '威力', '数', '弾速', '貫通', '落雷数', '範囲', '半径', '回転速度', '間隔(秒)',
-  '燃焼DPS', '持続(秒)', '速度倍率'];
+  '燃焼DPS', '持続(秒)', '速度倍率', '吸引力'];
 
 const rows = [HEADER];
 const cell = v => (v === undefined || v === null) ? '' : String(v);
@@ -25,7 +25,7 @@ for (const key in DATA.weapons) {
     rows.push(['武器', key, w.name, i + 1, w.desc,
       st.cd, st.dmg, st.count, st.speed, st.pierce,
       st.strikes, st.aoe, st.radius, st.rot, st.tick,
-      st.burn, st.dur, st.slow]);
+      st.burn, st.dur, st.slow, st.pull]);
   });
 }
 
@@ -63,7 +63,7 @@ rows.push(...dropRows);
 // ---------- アーティファクト(ボス撃破ドロップ・レベルなし) ----------
 for (const key in DATA.artifacts) {
   const a = DATA.artifacts[key];
-  rows.push(['アーティファクト', key, a.name, '', a.desc + '(ボス撃破時に未所持から1個ドロップ)']);
+  rows.push(['アーティファクト', key, a.name, '', a.desc + '(ボス撃破ドロップの宝珠で未所持3択+スキップから選択)']);
 }
 
 const csv = rows.map(r => {

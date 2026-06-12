@@ -104,7 +104,7 @@ function drawSpr(sp, fi, x, y, o = {}) {
 let state = 'title'; // title | play | levelup | pause | over | victory
 const cam = { x: 0, y: 0 };
 let S = null, player = null;
-let enemies = [], projs = [], eprojs = [], gems = [], drops = [], parts = [], floats = [], rings = [], boltsFx = [], zones = [];
+let enemies = [], projs = [], eprojs = [], gems = [], drops = [], parts = [], floats = [], rings = [], boltsFx = [], zones = [], slashes = [];
 let nextId = 1;
 let dtReal = 0;
 
@@ -122,12 +122,11 @@ function initRun() {
   player = {
     x: 0, y: 0, hp: 100, maxhp: 100, baseSpeed: 165, level: 1, xp: 0, xpNext: xpFor(1),
     weapons: {}, passives: {}, artifacts: {}, ifr: 0, facing: 1, animT: 0, moving: false, dead: false,
-    speed: 165, magnetR: 90, cdMult: 1, crit: 0.05, regen: 0, areaMult: 1, rangeMult: 1, sizeMult: 1,
+    speed: 165, magnetR: 90, cdMult: 1, regen: 0, areaMult: 1, rangeMult: 1, sizeMult: 1,
     bonus: { atk: 0, hp: 0, spd: 0, cd: 0, area: 0, size: 0 }, // 強化先が尽きた後のランダム微強化の累積
   };
   enemies = []; projs = []; eprojs = []; gems = []; drops = [];
-  parts = []; floats = []; rings = []; boltsFx = []; zones = [];
-  addWeapon('bolt');
+  parts = []; floats = []; rings = []; boltsFx = []; zones = []; slashes = [];
   recalc();
   hide(ui.bossbar);
   ui.hurt.classList.remove('lowhp');
@@ -135,28 +134,36 @@ function initRun() {
 
 function recalc() {
   const pv = player.passives, af = player.artifacts, b = player.bonus;
-  player.speed = player.baseSpeed * (1 + 0.10 * (pv.boots || 0)) * (1 + b.spd);
-  player.maxhp = Math.round((100 + 20 * (pv.heart || 0)) * (af.glass ? 0.7 : 1) * (1 + b.hp));
+  const supK = af.amp ? 1.5 : 1;   // 増幅の魔石: 補助系パッシブの効力+50%
+  const vitK = af.aegis ? 2 : 1;   // 不動の重鎧: 生命系パッシブの効力+100%
+  // 狂気の懐中時計: ブーツ・魔導書の効力+30%
+  player.speed = player.baseSpeed * (1 + (af.clock ? 0.13 : 0.10) * (pv.boots || 0)) * (af.aegis ? 0.6 : 1) * (1 + b.spd);
+  player.maxhp = Math.round((100 + 20 * vitK * (pv.heart || 0)) * (1 + b.hp));
   player.hp = Math.min(player.hp, player.maxhp);
-  player.magnetR = 90 * (1 + 0.4 * (pv.magnet || 0));
-  player.cdMult = Math.pow(0.93, pv.tome || 0) * (af.clock ? 0.9 : 1) * Math.max(0.05, 1 - b.cd);
-  player.crit = 0.05 + 0.07 * (pv.lens || 0);
-  player.regen = 0.6 * (pv.regen || 0);
-  player.areaMult = (1 + 0.12 * (pv.area || 0)) * (1 + b.area);
-  player.rangeMult = 1 + 0.10 * (pv.range || 0);
-  player.sizeMult = (1 + 0.20 * (pv.size || 0)) * (1 + b.size);
+  player.magnetR = 90 * (1 + 0.4 * supK * (pv.magnet || 0));
+  player.cdMult = Math.pow(af.clock ? 0.909 : 0.93, pv.tome || 0) * Math.max(0.05, 1 - b.cd);
+  player.regen = 0.6 * vitK * (pv.regen || 0);
+  player.areaMult = (1 + 0.12 * supK * (pv.area || 0)) * (1 + b.area);
+  player.rangeMult = 1 + 0.10 * supK * (pv.range || 0);
+  player.sizeMult = (1 + 0.20 * supK * (pv.size || 0)) * (1 + b.size);
 }
 
 // 攻撃倍率(HPで変動するため毎ヒット計算)
 // 狂戦士の血晶: パワークリスタルの効力が現在HP比に比例(満タンで150%・瀕死で0%)
 function dmgMultNow() {
   const pv = player.passives, af = player.artifacts;
-  let powEff = 0.12 * (pv.power || 0);
+  let powEff = 0.12 * (af.amp ? 0.85 : 1) * (pv.power || 0); // 増幅の魔石: パワークリスタル効力-15%
   if (af.frenzy) powEff *= (player.hp / player.maxhp) * 1.5;
-  let m = 1 + powEff + player.bonus.atk;
-  if (af.glass) m += 0.20;
-  if (af.clock) m -= 0.10;
-  return m;
+  return 1 + powEff + player.bonus.atk;
+}
+
+// クリティカル率(賭博師のダイスがコンボ数で変動するため毎ヒット計算)
+function critNow() {
+  const af = player.artifacts;
+  let lensEff = 0.07 * (player.passives.lens || 0);
+  if (af.amp) lensEff *= 0.85;                 // 増幅の魔石: クローバー効力-15%
+  if (af.dice) lensEff *= 0.75 + 0.01 * S.combo; // 賭博師のダイス: 効力-25%・コンボ1につき+1%
+  return 0.05 + lensEff;
 }
 
 // ============================================================
@@ -275,7 +282,7 @@ function startRun() {
   show(ui.hud);
   AudioMan.playMusic('field1');
   flashScreen(0.3);
-  announce('STAGE 1', DATA.palettes[0].label);
+  openStartChoice(); // 初期武器を選んでから開始
 }
 function restart() {
   AudioMan.unlock();
@@ -431,7 +438,7 @@ function gainXP(v) {
 function addWeapon(name) {
   const w = player.weapons[name];
   if (w) w.lv = Math.min(5, w.lv + 1);
-  else player.weapons[name] = { lv: 1, t: 0.3, tick: 0, angle: 0 };
+  else player.weapons[name] = { lv: 1, t: 0.3, tick: 0, angle: 0, slashN: 0, slashT: 0 };
   S.hudDirty = true;
 }
 function wstat(name) { return DATA.weapons[name].lv[player.weapons[name].lv - 1]; }
@@ -612,7 +619,7 @@ function updWeapons(dt) {
           if (!tgt) { w.t = 0.5; break; }
           w.t = st.cd * player.cdMult;
           zones.push({
-            x: tgt.x, y: tgt.y,
+            kind: 'bliz', x: tgt.x, y: tgt.y,
             r: st.radius * player.areaMult * (player.artifacts.blizzwalk ? 0.9 : 1),
             t: 0, dur: st.dur, tick: 0, dmg: st.dmg, slow: st.slow,
           });
@@ -620,17 +627,106 @@ function updWeapons(dt) {
         }
         break;
       }
+
+      case 'bhole': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          const tgt = nearestEnemy(player.x, player.y, 520 * player.rangeMult);
+          if (!tgt) { w.t = 0.5; break; }
+          w.t = st.cd * player.cdMult;
+          const a = Math.atan2(tgt.y - player.y, tgt.x - player.x);
+          projs.push({
+            kind: 'bhole', x: player.x, y: player.y - 6,
+            vx: Math.cos(a) * 300, vy: Math.sin(a) * 300,
+            dmg: 0, life: 1.5 * player.rangeMult, t: 0, rot: a, hit: new Set(),
+          });
+          AudioMan.shoot();
+        }
+        break;
+      }
+
+      case 'katana': {
+        w.t -= dt;
+        if (w.t <= 0 && w.slashN <= 0) {
+          w.t = st.cd * player.cdMult;
+          w.slashN = st.count; // 連続斬撃の残り回数
+          w.slashT = 0;
+        }
+        if (w.slashN > 0) {
+          w.slashT -= dt;
+          if (w.slashT <= 0) {
+            w.slashT = 0.14;
+            w.slashN--;
+            const reach = st.aoe * player.areaMult;
+            // 斬撃ごとに最も近い敵へ再照準(いなければ向いている方向)
+            const tgt = nearestEnemy(player.x, player.y, 480);
+            const ang = tgt ? Math.atan2(tgt.y - player.y, tgt.x - player.x)
+                            : (player.facing > 0 ? 0 : Math.PI);
+            const cx = player.x + Math.cos(ang) * reach * 0.55;
+            const cy = player.y + Math.sin(ang) * reach * 0.55;
+            forEachInRadius(cx, cy, reach * 0.6, e => {
+              hitEnemy(e, st.dmg, ang, player.artifacts.bleed ? { bleed: true } : {});
+            });
+            slashes.push({ x: player.x, y: player.y, ang, reach, t: 0, life: 0.18, flip: (w.slashN % 2) === 0 });
+            AudioMan.slashS();
+          }
+        }
+        break;
+      }
     }
   }
 }
 
+// ブラックホール生成(事象の地平線: ダメージ-50%・持続+100%)
+function spawnBlackhole(x, y) {
+  const st = wstat('bhole');
+  const af = player.artifacts;
+  zones.push({
+    kind: 'bhole', x, y,
+    r: st.radius * player.areaMult,
+    t: 0, dur: st.dur * (af.horizon ? 2 : 1), tick: 0,
+    dmg: st.dmg * (af.horizon ? 0.5 : 1), pull: st.pull,
+  });
+  addRing(x, y, st.radius * player.areaMult, '#b06ef0', 3);
+  AudioMan.bholeS();
+}
+
 // ============================================================
-// ブリザードゾーン
+// ゾーン(ブリザード / ブラックホール)
 // ============================================================
 function updZones(dt) {
   for (let i = zones.length - 1; i >= 0; i--) {
     const z = zones[i];
     z.t += dt;
+    if (z.kind === 'bhole') {
+      // 吸引(ボスは引き寄せない)
+      forEachInRadius(z.x, z.y, z.r, e => {
+        if (e.boss) return;
+        const d = Math.sqrt(dist2(e.x, e.y, z.x, z.y));
+        if (d < 6) return;
+        const a = Math.atan2(z.y - e.y, z.x - e.x);
+        const step = Math.min(z.pull * dt, d - 4);
+        e.x += Math.cos(a) * step;
+        e.y += Math.sin(a) * step;
+      });
+      // 0.1秒毎の持続ダメージ
+      z.tick -= dt;
+      if (z.tick <= 0) {
+        z.tick = 0.1;
+        forEachInRadius(z.x, z.y, z.r, e => hitEnemy(e, z.dmg, rand(0, TAU), { kb: 0, small: true }));
+      }
+      // 渦パーティクル(外周から中心へ落ちる)
+      if (Math.random() < 0.7 && parts.length < 650) {
+        const a = rand(0, TAU), rr = z.r * rand(0.5, 1);
+        parts.push({
+          x: z.x + Math.cos(a) * rr, y: z.y + Math.sin(a) * rr,
+          vx: -Math.cos(a) * rr * 2.2, vy: -Math.sin(a) * rr * 2.2, g: 0,
+          life: rand(0.25, 0.45), t: 0, size: rand(1.5, 3), col: pick(['#b06ef0', '#7a3fd0', '#fff']),
+        });
+      }
+      if (z.t > z.dur) zones.splice(i, 1);
+      continue;
+    }
     // 吹雪の羅針盤: プレイヤーへゆっくり移動
     if (player.artifacts.blizzwalk) {
       const a = Math.atan2(player.y - z.y, player.x - z.x);
@@ -665,6 +761,7 @@ function prad(p) {
     case 'axe': return 16 * player.sizeMult;
     case 'wisp': return 14 * player.sizeMult;
     case 'fire': return 13 * player.sizeMult;
+    case 'bhole': return 14;
     default: return 12;
   }
 }
@@ -676,6 +773,12 @@ function updProjs(dt) {
     switch (p.kind) {
       case 'bolt':
         p.x += p.vx * dt; p.y += p.vy * dt;
+        break;
+      case 'bhole':
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        if (Math.random() < 0.5 && parts.length < 650) {
+          parts.push({ x: p.x, y: p.y, vx: rand(-20, 20), vy: rand(-20, 20), g: 0, life: 0.3, t: 0, size: rand(1.5, 3), col: pick(['#b06ef0', '#7a3fd0']) });
+        }
         break;
       case 'fire':
         p.x += p.vx * dt; p.y += p.vy * dt;
@@ -711,6 +814,12 @@ function updProjs(dt) {
     let dead = false;
     forEachInRadius(p.x, p.y, prad(p), e => {
       if (dead || p.hit.has(e.id)) return;
+      // 重力弾: 最初の接触地点でブラックホールを展開
+      if (p.kind === 'bhole') {
+        dead = true;
+        spawnBlackhole(p.x, p.y);
+        return;
+      }
       p.hit.add(e.id);
       const o = {};
       if (p.kind === 'fire') o.burn = p.burn;
@@ -729,7 +838,10 @@ function updProjs(dt) {
         else dead = true;
       }
     });
-    if (p.t > p.life) dead = true;
+    if (p.t > p.life) {
+      if (p.kind === 'bhole' && !dead) spawnBlackhole(p.x, p.y); // 不発防止: 射程端でも展開
+      dead = true;
+    }
     if (p.kind === 'axe' && p.y > player.y + H / 2 + 140) dead = true;
     if (dead) projs.splice(i, 1);
   }
@@ -741,14 +853,14 @@ function updProjs(dt) {
 function hitEnemy(e, base, ang, o = {}) {
   if (e.hp <= 0) return;
   let dmg = base * dmgMultNow();
-  if (e.bleedT > 0) dmg *= 1.15; // 出血: 受けるダメージ+15%
-  const crit = Math.random() < player.crit;
+  if (e.bleedT > 0 && e.bleedSt) dmg *= 1 + 0.05 * e.bleedSt; // 出血: スタック毎に被ダメージ+5%
+  const crit = Math.random() < critNow();
   if (crit) dmg *= 2 + (player.artifacts.critdmg ? 0.25 : 0);
   dmg = Math.max(1, Math.round(dmg));
   e.hp -= dmg;
   S.totalDmg += dmg;
   e.flash = 0.08;
-  if (o.bleed) e.bleedT = 4;
+  if (o.bleed) { e.bleedT = 5; e.bleedSt = Math.min(6, (e.bleedSt || 0) + 1); }
   if (o.burn) {
     e.burnDps = Math.max(e.burnDps || 0, o.burn);
     e.burnT = 3;
@@ -810,7 +922,7 @@ function spawnEnemy(type, opts = {}) {
   const y = opts.y !== undefined ? opts.y : player.y + Math.sin(a) * R;
   const pact = player.artifacts.pact ? 1.15 : 1; // 悪魔の契約書: 敵ステータス+15%
   const hpMul = (1 + S.time * 0.0055) * (opts.elite ? 9 : 1) * loopMul() * pact;
-  const spdMul = (1 + (S.loop - 1) * 0.25) * pact;
+  const spdMul = (1 + (S.loop - 1) * 0.25) * pact * (player.artifacts.clock ? 1.15 : 1); // 狂気の懐中時計: 敵速度+15%
   enemies.push({
     id: nextId++, type, x, y,
     hp: d.hp * hpMul, maxhp: d.hp * hpMul,
@@ -850,6 +962,7 @@ function updEnemies(dt) {
     if (e.slowT > 0) e.slowT -= dt;
     if (e.bleedT > 0) {
       e.bleedT -= dt;
+      if (e.bleedT <= 0) e.bleedSt = 0; // 出血が切れたらスタック消滅
       if (Math.random() < 0.1 && parts.length < 650) {
         parts.push({ x: e.x + rand(-e.r, e.r) * 0.5, y: e.y, vx: rand(-10, 10), vy: rand(20, 60), g: 220, life: 0.45, t: 0, size: 2, col: '#d8333f' });
       }
@@ -907,7 +1020,7 @@ function spawnBoss(key) {
   const a = rand(0, TAU), R = Math.hypot(W, H) / 2 + 130;
   const pact = player.artifacts.pact ? 1.15 : 1;
   const hp = b.hp * (1 + S.time * 0.0008) * loopMul() * pact;
-  const bspd = b.spd * (1 + (S.loop - 1) * 0.25) * pact;
+  const bspd = b.spd * (1 + (S.loop - 1) * 0.25) * pact * (player.artifacts.clock ? 1.15 : 1);
   const e = {
     id: nextId++, type: key, boss: key, name: b.name,
     x: player.x + Math.cos(a) * R, y: player.y + Math.sin(a) * R,
@@ -1134,7 +1247,7 @@ function updGems(dt) {
       S.gemStreakT = 0.9;
       AudioMan.gem(S.gemStreak);
       burst(player.x, player.y - 10, { n: 3, cols: ['#6ee7ff', '#fff'], sp1: 90, g: 0, life: 0.5 });
-      gainXP(g.v * (player.artifacts.pact ? 1.3 : 1)); // 悪魔の契約書: 獲得経験値+30%
+      gainXP(g.v * (player.artifacts.pact ? 1.5 : 1)); // 悪魔の契約書: 獲得経験値+50%
     }
   }
 }
@@ -1192,7 +1305,7 @@ function updSpawner(dt) {
   if (!cfg) return;
   S.spawnT -= dt;
   if (S.spawnT <= 0) {
-    S.spawnT = cfg.interval / (1 + (S.loop - 1) * 0.25); // 周回毎に出現率+25%
+    S.spawnT = cfg.interval / ((1 + (S.loop - 1) * 0.25) * (player.artifacts.clock ? 1.15 : 1)); // 周回毎に出現率+25%・懐中時計で+15%
     if (enemies.length < cfg.max) spawnEnemy(pick(cfg.types));
   }
   if (S.time > 100) {
@@ -1222,7 +1335,15 @@ function horde() {
 // レベルアップUI
 // ============================================================
 let currentChoices = [];
-let lvupMode = 'level'; // 'level' | 'artifact'
+let lvupMode = 'level'; // 'level' | 'artifact' | 'start'
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 function buildChoices() {
   const pool = [];
@@ -1240,15 +1361,15 @@ function buildChoices() {
       if (pCount < S.passiveSlots) pool.push({ type: 'passive', key: k });
     } else if (lv < 5) pool.push({ type: 'passive', key: k });
   }
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, 3);
+  return shuffle(pool).slice(0, 3);
 }
 
 function descFor(c) {
-  if (c.type === 'heal') return 'HPを50回復する';
+  if (c.type === 'skip') {
+    return lvupMode === 'artifact'
+      ? 'ランダムなステータスを大きく強化する(攻撃力+10% など)'
+      : 'ランダムなステータスを少し強化する(攻撃力+1% など)';
+  }
   if (c.type === 'artifact') return DATA.artifacts[c.key].desc;
   if (c.type === 'passive') return DATA.passives[c.key].desc;
   const info = DATA.weapons[c.key];
@@ -1310,35 +1431,50 @@ function openLevelUp() {
   show(ui.lvup);
 }
 
-// アーティファクト選択(ボスドロップ取得時・リロール不可)
+// アーティファクト選択(ボスドロップ取得時・リロール可)
 function openArtifactChoice() {
   const unowned = Object.keys(DATA.artifacts).filter(k => !player.artifacts[k]);
   if (!unowned.length) { applyMicroBuff(10); return; } // 全所持後は微強化の10倍効果
-  for (let i = unowned.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    [unowned[i], unowned[j]] = [unowned[j], unowned[i]];
-  }
-  currentChoices = unowned.slice(0, 3).map(k => ({ type: 'artifact', key: k }));
   state = 'levelup';
   lvupMode = 'artifact';
   ui.lvupTitle.textContent = 'ARTIFACT!';
-  hide(ui.reroll);
-  renderCards();
+  show(ui.reroll);
+  rollChoices();
   show(ui.lvup);
   AudioMan.artifact();
   flashScreen(0.35);
 }
 
+// 初期武器選択(ゲーム開始時・リロール可)
+function openStartChoice() {
+  state = 'levelup';
+  lvupMode = 'start';
+  ui.lvupTitle.textContent = '初期武器を選択!';
+  show(ui.reroll);
+  rollChoices();
+  show(ui.lvup);
+  AudioMan.levelup();
+}
+
 function rollChoices() {
-  currentChoices = buildChoices();
-  currentChoices.push({ type: 'heal' }); // 回復カードは常設(リロール対象外)
+  if (lvupMode === 'artifact') {
+    const unowned = Object.keys(DATA.artifacts).filter(k => !player.artifacts[k]);
+    currentChoices = shuffle(unowned).slice(0, 3).map(k => ({ type: 'artifact', key: k }));
+    currentChoices.push({ type: 'skip' }); // スキップカードは常設(リロール対象外)
+  } else if (lvupMode === 'start') {
+    currentChoices = shuffle(Object.keys(DATA.weapons)).slice(0, 3)
+      .map(k => ({ type: 'weapon', key: k, nu: true }));
+  } else {
+    currentChoices = buildChoices();
+    currentChoices.push({ type: 'skip' }); // スキップカードは常設(リロール対象外)
+  }
   renderCards();
   ui.reroll.textContent = `リロール (${S.rerolls})`;
   ui.reroll.disabled = S.rerolls <= 0;
 }
 
 function reroll() {
-  if (state !== 'levelup' || lvupMode !== 'level' || S.rerolls <= 0) return;
+  if (state !== 'levelup' || S.rerolls <= 0) return;
   S.rerolls--;
   AudioMan.select();
   flashScreen(0.12);
@@ -1351,7 +1487,7 @@ function renderCards() {
     const info = c.type === 'weapon' ? DATA.weapons[c.key]
                : c.type === 'passive' ? DATA.passives[c.key]
                : c.type === 'artifact' ? DATA.artifacts[c.key]
-               : { name: '回復', desc: '', icon: 'heart' };
+               : { name: 'スキップ', desc: '', icon: 'skip' };
     const d = document.createElement('div');
     d.className = 'card';
     let tag = '';
@@ -1384,9 +1520,10 @@ function chooseCard(i) {
   if (c.type === 'weapon') addWeapon(c.key);
   else if (c.type === 'passive') { player.passives[c.key] = (player.passives[c.key] || 0) + 1; recalc(); S.hudDirty = true; }
   else if (c.type === 'artifact') applyArtifact(c.key);
-  else heal(50);
+  else if (c.type === 'skip') applyMicroBuff(lvupMode === 'artifact' ? 10 : 1);
   hide(ui.lvup);
   flashScreen(0.18);
+  if (lvupMode === 'start') announce('STAGE 1', DATA.palettes[0].label);
   if (S.pendingLv > 0) { openLevelUp(); return; }
   state = 'play';
 }
@@ -1520,10 +1657,35 @@ function render() {
 
   drawAura();
 
-  // ブリザードゾーン
+  // ゾーン(ブリザード / ブラックホール)
   for (const z of zones) {
     const zx = z.x - cam.x, zy = z.y - cam.y;
     const k = Math.min(1, z.t * 4) * Math.min(1, (z.dur - z.t) * 2.5);
+    if (z.kind === 'bhole') {
+      const g2 = ctx.createRadialGradient(zx, zy, 2, zx, zy, z.r);
+      g2.addColorStop(0, `rgba(10,5,20,${0.85 * k})`);
+      g2.addColorStop(0.35, `rgba(60,28,110,${0.45 * k})`);
+      g2.addColorStop(1, 'rgba(120,70,200,0)');
+      ctx.fillStyle = g2;
+      ctx.beginPath();
+      ctx.arc(zx, zy, z.r, 0, TAU);
+      ctx.fill();
+      // 回転する降着円盤
+      ctx.save();
+      ctx.translate(zx, zy);
+      ctx.rotate(S.time * 6);
+      ctx.strokeStyle = `rgba(176,110,240,${0.8 * k})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, z.r * 0.4, z.r * 0.16, 0, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = `rgba(0,0,0,${0.9 * k})`;
+      ctx.beginPath();
+      ctx.arc(zx, zy, z.r * 0.13, 0, TAU);
+      ctx.fill();
+      continue;
+    }
     const g = ctx.createRadialGradient(zx, zy, z.r * 0.2, zx, zy, z.r);
     g.addColorStop(0, `rgba(160,220,255,${0.10 * k})`);
     g.addColorStop(1, `rgba(120,190,255,${0.26 * k})`);
@@ -1581,7 +1743,30 @@ function render() {
     else if (p.kind === 'axe') drawSpr(spr('proj.axe', 9, 9), 0, p.x, p.y, { rot: p.rot, scale: szM });
     else if (p.kind === 'wisp') drawSpr(spr('proj.wisp', 8, 8), (p.t * 10) | 0, p.x, p.y, { scale: szM });
     else if (p.kind === 'fire') drawSpr(spr('proj.fire', 8, 8), (p.t * 12) | 0, p.x, p.y, { rot: p.rot, scale: szM });
+    else if (p.kind === 'bhole') drawSpr(spr('proj.bhole', 8, 8), (p.t * 8) | 0, p.x, p.y, { rot: p.rot });
   }
+  // 刀の斬撃(三日月アーク)
+  for (const s of slashes) {
+    const k = s.t / s.life;
+    ctx.save();
+    ctx.translate(s.x - cam.x + Math.cos(s.ang) * s.reach * 0.3, s.y - cam.y + Math.sin(s.ang) * s.reach * 0.3);
+    ctx.rotate(s.ang);
+    ctx.scale(1, s.flip ? 1 : -1);
+    ctx.globalAlpha = 1 - k;
+    const r = s.reach * (0.55 + 0.25 * k);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -1.1, 1.1);
+    ctx.strokeStyle = 'rgba(200,230,255,.9)';
+    ctx.lineWidth = 7 * (1 - k) + 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.93, -0.9, 0.9);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3 * (1 - k) + 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
   // ブレード
   const bw = player.weapons.blade;
   if (bw && !player.dead) {
@@ -1701,6 +1886,10 @@ function updFx(dt) {
   for (let i = boltsFx.length - 1; i >= 0; i--) {
     boltsFx[i].t += dt;
     if (boltsFx[i].t > boltsFx[i].life) boltsFx.splice(i, 1);
+  }
+  for (let i = slashes.length - 1; i >= 0; i--) {
+    slashes[i].t += dt;
+    if (slashes[i].t > slashes[i].life) slashes.splice(i, 1);
   }
   // 環境パーティクル
   S.ambT -= dt;
