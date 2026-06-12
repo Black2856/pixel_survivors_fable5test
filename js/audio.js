@@ -18,7 +18,32 @@
     muted: false,
     music: null,
     musicName: null,
-    musicVol: 0.55,
+    musicVol: 0.55, // 音楽の基準音量(ユーザー音量はこれに乗算)
+    musicUser: 1,   // ユーザー設定の音楽音量(0〜1)
+    sfxUser: 1,     // ユーザー設定の効果音音量(0〜1)
+
+    _mvol() { return this.musicVol * this.musicUser; },
+
+    setMusicVol(v) {
+      this.musicUser = Math.min(1, Math.max(0, v));
+      if (this.music) {
+        if (this.music._iv) { clearInterval(this.music._iv); this.music._iv = null; } // フェード中なら即座に確定
+        this.music.volume = this.muted ? 0 : this._mvol();
+      }
+      this._saveVol();
+    },
+
+    setSfxVol(v) {
+      this.sfxUser = Math.min(1, Math.max(0, v));
+      this._saveVol();
+    },
+
+    _saveVol() {
+      try {
+        localStorage.setItem('px_vol_music', this.musicUser);
+        localStorage.setItem('px_vol_sfx', this.sfxUser);
+      } catch (e) { /* localStorage不可でも動作継続 */ }
+    },
 
     unlock() {
       if (!this.unlocked) {
@@ -32,7 +57,7 @@
 
     toggleMute() {
       this.muted = !this.muted;
-      if (this.music) this.music.volume = this.muted ? 0 : this.musicVol;
+      if (this.music) this.music.volume = this.muted ? 0 : this._mvol();
       return this.muted;
     },
 
@@ -57,7 +82,7 @@
       this.music = el;
       const p = el.play();
       if (p) p.catch(() => { this.musicName = null; }); // 自動再生ブロック時は次の操作で再試行
-      if (!this.muted) this._ramp(el, this.musicVol, fade);
+      if (!this.muted) this._ramp(el, this._mvol(), fade);
     },
 
     stopMusic(fade = 0.8) {
@@ -74,20 +99,20 @@
 
     // ---------- SFXシンセ ----------
     tone(f0, f1, dur, opt = {}) {
-      if (!this.ctx || this.muted) return;
+      if (!this.ctx || this.muted || this.sfxUser <= 0) return;
       const c = this.ctx, t = c.currentTime + (opt.delay || 0);
       const o = c.createOscillator(), g = c.createGain();
       o.type = opt.type || 'square';
       o.frequency.setValueAtTime(Math.max(1, f0), t);
       o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
-      g.gain.setValueAtTime(opt.vol || 0.15, t);
+      g.gain.setValueAtTime((opt.vol || 0.15) * this.sfxUser, t);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.connect(g); g.connect(c.destination);
       o.start(t); o.stop(t + dur + 0.02);
     },
 
     noise(dur, opt = {}) {
-      if (!this.ctx || this.muted) return;
+      if (!this.ctx || this.muted || this.sfxUser <= 0) return;
       const c = this.ctx, t = c.currentTime + (opt.delay || 0);
       const len = Math.max(1, Math.floor(c.sampleRate * dur));
       const buf = c.createBuffer(1, len, c.sampleRate);
@@ -98,7 +123,7 @@
       flt.frequency.setValueAtTime(opt.f || 900, t);
       flt.frequency.exponentialRampToValueAtTime(80, t + dur);
       const g = c.createGain();
-      g.gain.setValueAtTime(opt.vol || 0.2, t);
+      g.gain.setValueAtTime((opt.vol || 0.2) * this.sfxUser, t);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       src.connect(flt); flt.connect(g); g.connect(c.destination);
       src.start(t);
@@ -131,6 +156,14 @@
     artifact(){ [330, 415, 523, 659, 880, 1108].forEach((f, i) => this.tone(f, f, 0.16, { vol: 0.12, delay: i * 0.07 })); },
     death()  { this.tone(420, 40, 1.0, { type: 'sawtooth', vol: 0.25 }); this.noise(0.8, { vol: 0.2, f: 400 }); },
   };
+
+  // 保存済みの音量設定を復元
+  try {
+    const m = parseFloat(localStorage.getItem('px_vol_music'));
+    const s = parseFloat(localStorage.getItem('px_vol_sfx'));
+    if (Number.isFinite(m)) A.musicUser = Math.min(1, Math.max(0, m));
+    if (Number.isFinite(s)) A.sfxUser = Math.min(1, Math.max(0, s));
+  } catch (e) { /* localStorage不可でも動作継続 */ }
 
   window.AudioMan = A;
 })();

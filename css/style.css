@@ -101,6 +101,13 @@ canvas#game { position: absolute; inset: 0; image-rendering: pixelated; }
 #pause-screen h2 { font-size: clamp(24px, 5vw, 48px); text-shadow: 3px 3px 0 #000; }
 .pause-hint { margin-top: 22px; font-family: 'DotGothic16'; color: #9a90bd; }
 
+/* ---- volume ---- */
+#volume-panel { margin-top: 38px; display: flex; flex-direction: column; gap: 18px; }
+.vol-row { display: flex; align-items: center; gap: 14px; font-family: 'DotGothic16'; font-size: 16px; color: #cfc6e8; }
+.vol-row span:first-child { width: 72px; text-align: right; }
+.vol-row input[type=range] { width: 220px; accent-color: #ffd23f; cursor: pointer; }
+.vol-val { width: 52px; text-align: left; color: #ffd23f; }
+
 /* ============ HUD ============ */
 #hud { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 #xpbar { position: absolute; top: 0; left: 0; right: 0; height: 18px; background: rgba(10,6,20,.8); border-bottom: 2px solid #000; }
@@ -116,8 +123,10 @@ canvas#game { position: absolute; inset: 0; image-rendering: pixelated; }
   position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
   font-size: clamp(16px, 2.4vw, 28px); color: #fff; text-shadow: 2px 2px 0 #000;
 }
-#kills { margin-left: auto; color: #ff8a8a; font-size: 14px; text-shadow: 2px 2px 0 #000; padding-top: 6px; }
-#weapon-icons { display: flex; gap: 6px; flex-wrap: wrap; max-width: 40vw; }
+#hud-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; padding-top: 6px; }
+#kills { color: #ff8a8a; font-size: 14px; text-shadow: 2px 2px 0 #000; }
+#dmgscore { color: #ffd76a; font-size: 12px; text-shadow: 2px 2px 0 #000; }
+#weapon-icons { display: flex; gap: 6px; flex-wrap: wrap; max-width: 40vw; pointer-events: auto; }
 #weapon-icons .wicon {
   position: relative; width: 34px; height: 34px;
   background: rgba(20,12,38,.85); border: 2px solid #4a3d75; border-radius: 4px;
@@ -130,7 +139,7 @@ canvas#game { position: absolute; inset: 0; image-rendering: pixelated; }
 }
 #weapon-icons .wicon.art { border-color: #9b6ef0; box-shadow: 0 0 8px #9b6ef088; }
 #combo {
-  position: absolute; right: 18px; top: 74px;
+  position: absolute; right: 18px; top: 104px;
   color: #ffd23f; font-size: clamp(14px, 2vw, 24px);
   text-shadow: 2px 2px 0 #7a3013, 0 0 14px #ff9d00aa;
 }
@@ -177,6 +186,18 @@ canvas#game { position: absolute; inset: 0; image-rendering: pixelated; }
 #announce .a-sub { display: block; font-family: 'DotGothic16'; font-size: .55em; color: #ffeebd; margin-top: 12px; }
 
 #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 9; }
+
+/* ---- HUDアイテムのツールチップ ---- */
+#tooltip {
+  position: absolute; z-index: 30; pointer-events: none;
+  max-width: 290px; padding: 10px 12px;
+  background: rgba(16,10,32,.95); border: 2px solid #6a58a8; border-radius: 4px;
+  font-family: 'DotGothic16'; font-size: 13px; color: #cfc6e8; line-height: 1.55;
+  text-align: left;
+}
+#tooltip b { color: #fff; font-size: 14px; }
+#tooltip .tip-lv { color: #ffd23f; margin-left: 8px; font-size: 12px; }
+#tooltip .tip-art { color: #c39bff; margin-left: 8px; font-size: 12px; }
 #hurt-vignette {
   position: absolute; inset: 0; pointer-events: none; z-index: 6;
   box-shadow: inset 0 0 120px 40px rgba(255,0,0,0);

@@ -21,7 +21,8 @@ const TAU = Math.PI * 2;
 const $ = id => document.getElementById(id);
 const ui = {
   hud: $('hud'), xpfill: $('xpfill'), lvltext: $('lvltext'), timer: $('timer'),
-  kills: $('kills'), combo: $('combo'), icons: $('weapon-icons'),
+  kills: $('kills'), dmg: $('dmgscore'), combo: $('combo'), icons: $('weapon-icons'),
+  tip: $('tooltip'),
   bossbar: $('bossbar'), bossfill: $('bossfill'), bossname: $('bossname'),
   title: $('title-screen'), lvup: $('levelup-screen'), cards: $('cards'), lvupTitle: $('lvup-title'),
   over: $('gameover-screen'), goStats: $('go-stats'), reroll: $('reroll-btn'),
@@ -214,6 +215,18 @@ $('btn-endless').addEventListener('click', () => startEndless());
 $('btn-totitle').addEventListener('click', () => goTitle());
 ui.reroll.addEventListener('click', () => reroll());
 
+// ---- 音量スライダー(ポーズ画面) ----
+const volMusic = $('vol-music'), volSfx = $('vol-sfx');
+function syncVolUI() {
+  volMusic.value = Math.round(AudioMan.musicUser * 100);
+  volSfx.value = Math.round(AudioMan.sfxUser * 100);
+  $('vol-music-val').textContent = volMusic.value + '%';
+  $('vol-sfx-val').textContent = volSfx.value + '%';
+}
+volMusic.addEventListener('input', () => { AudioMan.setMusicVol(volMusic.value / 100); syncVolUI(); });
+volSfx.addEventListener('input', () => { AudioMan.setSfxVol(volSfx.value / 100); syncVolUI(); AudioMan.click(); });
+syncVolUI();
+
 // ============================================================
 // 演出ヘルパー
 // ============================================================
@@ -289,7 +302,13 @@ function restart() {
   startRun();
 }
 function pauseGame() { state = 'pause'; show(ui.pause); AudioMan.pauseMusic(); }
-function resumeGame() { state = 'play'; hide(ui.pause); AudioMan.resumeMusic(); }
+function resumeGame() {
+  state = 'play';
+  hide(ui.pause);
+  AudioMan.resumeMusic();
+  // スライダーにフォーカスが残ると矢印キーが移動と競合するため外す
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
 
 function gameOver() {
   if (player.dead) return;
@@ -501,9 +520,9 @@ function updWeapons(dt) {
             Math.abs(e.y - player.y) < H / 2 + 40);
           if (!visible.length) { w.t = 0.4; break; }
           w.t = st.cd * player.cdMult;
-          // 連鎖の雷核: ダメージ-35%、直撃地点最寄りの敵1体へ連鎖
-          const tDmg = st.dmg * (player.artifacts.chain ? 0.65 : 1);
-          const tAoe = st.aoe * player.areaMult;
+          // 連鎖の雷核: ダメージ-20%・攻撃範囲-20%、落雷数と同数の敵へ次々に連鎖
+          const tDmg = st.dmg * (player.artifacts.chain ? 0.8 : 1);
+          const tAoe = st.aoe * player.areaMult * (player.artifacts.chain ? 0.8 : 1);
           for (let i = 0; i < st.strikes && visible.length; i++) {
             const e = visible.splice((Math.random() * visible.length) | 0, 1)[0];
             boltsFx.push({ x: e.x, y: e.y, t: 0, life: 0.22, seed: rand(0, 99) });
@@ -511,16 +530,21 @@ function updWeapons(dt) {
             addRing(e.x, e.y, tAoe, '#ffe14d', 3);
             forEachInRadius(e.x, e.y, tAoe, t2 => hitEnemy(t2, tDmg, rand(0, TAU)));
             if (player.artifacts.chain) {
-              let near = null, bd = 320 * 320;
-              for (const c of enemies) {
-                if (c === e || c.hp <= 0) continue;
-                const d = dist2(e.x, e.y, c.x, c.y);
-                if (d < bd) { bd = d; near = c; }
-              }
-              if (near) {
-                boltsFx.push({ chain: true, x1: e.x, y1: e.y, x2: near.x, y2: near.y, t: 0, life: 0.18 });
+              let src = e;
+              const chained = new Set([e]);
+              for (let j = 0; j < st.strikes; j++) {
+                let near = null, bd = 320 * 320;
+                for (const c of enemies) {
+                  if (c.hp <= 0 || chained.has(c)) continue;
+                  const d = dist2(src.x, src.y, c.x, c.y);
+                  if (d < bd) { bd = d; near = c; }
+                }
+                if (!near) break;
+                boltsFx.push({ chain: true, x1: src.x, y1: src.y, x2: near.x, y2: near.y, t: 0, life: 0.18 });
                 burst(near.x, near.y, { n: 7, cols: ['#fff7ae', '#ffe14d'], sp1: 180 });
                 hitEnemy(near, tDmg, rand(0, TAU));
+                chained.add(near);
+                src = near;
               }
             }
           }
@@ -573,16 +597,15 @@ function updWeapons(dt) {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = st.cd * player.cdMult;
-          // 狩猟の精霊石: 射程・追尾・弾速 +20% / ダメージ -20%
+          // 狩猟の精霊石: 同じ敵に再ヒット可(当たり判定を抜けるとリセット) / ダメージ-15%・射程-15%・追尾-15%
           const hunt = player.artifacts.wisphunter;
-          const wSpd = 260 * (hunt ? 1.2 : 1);
           for (let i = 0; i < st.count; i++) {
             const a = rand(0, TAU);
             projs.push({
               kind: 'wisp', x: player.x, y: player.y,
-              vx: Math.cos(a) * wSpd, vy: Math.sin(a) * wSpd,
-              dmg: st.dmg * (hunt ? 0.8 : 1), pierce: st.pierce,
-              life: 2.8 * player.rangeMult * (hunt ? 1.2 : 1), t: 0, tgt: null, hit: new Set(),
+              vx: Math.cos(a) * 260, vy: Math.sin(a) * 260,
+              dmg: st.dmg * (hunt ? 0.85 : 1), pierce: st.pierce,
+              life: 2.8 * player.rangeMult * (hunt ? 0.85 : 1), t: 0, tgt: null, hit: new Set(),
             });
           }
           AudioMan.shoot();
@@ -618,10 +641,12 @@ function updWeapons(dt) {
           const tgt = nearestEnemy(player.x, player.y, Math.max(W, H) / 2);
           if (!tgt) { w.t = 0.5; break; }
           w.t = st.cd * player.cdMult;
+          // 吹雪の羅針盤: 範囲-15%・持続-15%
+          const walk = player.artifacts.blizzwalk;
           zones.push({
             kind: 'bliz', x: tgt.x, y: tgt.y,
-            r: st.radius * player.areaMult * (player.artifacts.blizzwalk ? 0.9 : 1),
-            t: 0, dur: st.dur, tick: 0, dmg: st.dmg, slow: st.slow,
+            r: st.radius * player.areaMult * (walk ? 0.85 : 1),
+            t: 0, dur: st.dur * (walk ? 0.85 : 1), tick: 0, dmg: st.dmg,
           });
           AudioMan.blizzS();
         }
@@ -677,13 +702,14 @@ function updWeapons(dt) {
   }
 }
 
-// ブラックホール生成(事象の地平線: ダメージ-50%・持続+100%)
+// ブラックホール生成(事象の地平線: ダメージ-40%・持続+100%・吸引1体毎に範囲+5%・範囲内の敵の攻撃力-50%)
 function spawnBlackhole(x, y) {
   const st = wstat('bhole');
   const af = player.artifacts;
+  const r0 = st.radius * player.areaMult;
   zones.push({
     kind: 'bhole', x, y,
-    r: st.radius * player.areaMult,
+    r: r0, baseR: r0, grabbed: af.horizon ? new Set() : null,
     t: 0, dur: st.dur * (af.horizon ? 2 : 1), tick: 0,
     dmg: st.dmg * (af.horizon ? 0.6 : 1), pull: st.pull,
   });
@@ -701,7 +727,13 @@ function updZones(dt) {
     if (z.kind === 'bhole') {
       // 吸引(ボスは引き寄せない)
       forEachInRadius(z.x, z.y, z.r, e => {
+        if (z.grabbed) e.weakT = 0.15; // 事象の地平線: 範囲内の敵は攻撃力-50%
         if (e.boss) return;
+        // 事象の地平線: 吸引した敵1体につき範囲+5%
+        if (z.grabbed && !z.grabbed.has(e.id)) {
+          z.grabbed.add(e.id);
+          z.r = z.baseR * (1 + 0.05 * z.grabbed.size);
+        }
         const d = Math.sqrt(dist2(e.x, e.y, z.x, z.y));
         if (d < 6) return;
         const a = Math.atan2(z.y - e.y, z.x - e.x);
@@ -736,9 +768,11 @@ function updZones(dt) {
     z.tick -= dt;
     if (z.tick <= 0) {
       z.tick = 0.5;
+      // ダメージ毎に凍傷1スタック付与(5秒/最大10・羅針盤で最大15)
+      const maxFrost = player.artifacts.blizzwalk ? 15 : 10;
       forEachInRadius(z.x, z.y, z.r, e => {
         hitEnemy(e, z.dmg, rand(0, TAU), { kb: 0, small: true });
-        if (!e.boss) { e.slowT = 1.0; e.slowMult = z.slow; }
+        if (!e.boss) { e.frostT = 5; e.frostSt = Math.min(maxFrost, (e.frostSt || 0) + 1); }
       });
     }
     // 雪片パーティクル
@@ -793,12 +827,12 @@ function updProjs(dt) {
         break;
       case 'wisp': {
         const hunt = player.artifacts.wisphunter;
-        if (!p.tgt || p.tgt.hp <= 0) p.tgt = nearestEnemy(p.x, p.y, 380 * (hunt ? 1.2 : 1));
+        if (!p.tgt || p.tgt.hp <= 0) p.tgt = nearestEnemy(p.x, p.y, 380);
         if (p.tgt) {
           const ta = Math.atan2(p.tgt.y - p.y, p.tgt.x - p.x);
           let cur = Math.atan2(p.vy, p.vx);
           let d = ((ta - cur + Math.PI * 3) % TAU) - Math.PI;
-          const turn = (hunt ? 6.6 : 5.5) * dt;
+          const turn = (hunt ? 4.7 : 5.5) * dt; // 狩猟の精霊石: 追尾能力-15%
           cur += clamp(d, -turn, turn);
           const sp = Math.hypot(p.vx, p.vy);
           p.vx = Math.cos(cur) * sp;
@@ -812,7 +846,10 @@ function updProjs(dt) {
       }
     }
     let dead = false;
+    // 狩猟の精霊石: 当たり判定を抜けた敵を hit から外して再ヒット可能にする
+    const touching = (p.kind === 'wisp' && player.artifacts.wisphunter) ? new Set() : null;
     forEachInRadius(p.x, p.y, prad(p), e => {
+      if (touching) touching.add(e.id);
       if (dead || p.hit.has(e.id)) return;
       // 重力弾: 最初の接触地点でブラックホールを展開
       if (p.kind === 'bhole') {
@@ -838,6 +875,9 @@ function updProjs(dt) {
         else dead = true;
       }
     });
+    if (touching) {
+      for (const id of p.hit) if (!touching.has(id)) p.hit.delete(id);
+    }
     if (p.t > p.life) {
       if (p.kind === 'bhole' && !dead) spawnBlackhole(p.x, p.y); // 不発防止: 射程端でも展開
       dead = true;
@@ -854,6 +894,8 @@ function hitEnemy(e, base, ang, o = {}) {
   if (e.hp <= 0) return;
   let dmg = base * dmgMultNow();
   if (e.bleedT > 0 && e.bleedSt) dmg *= 1 + 0.05 * e.bleedSt; // 出血: スタック毎に被ダメージ+5%
+  // 吹雪の羅針盤: 凍傷スタック毎に被ダメージ+1%
+  if (player.artifacts.blizzwalk && e.frostT > 0 && e.frostSt) dmg *= 1 + 0.01 * e.frostSt;
   const crit = Math.random() < critNow();
   if (crit) dmg *= 2 + (player.artifacts.critdmg ? 0.25 : 0);
   dmg = Math.max(1, Math.round(dmg));
@@ -915,6 +957,14 @@ function dropGem(x, y, v) {
 // ============================================================
 function loopMul() { return 1 + (S.loop - 1) * 1.2; }
 
+// 敵の与ダメージ(凍傷: スタック毎に攻撃力-2% / 事象の地平線: 範囲内の敵は攻撃力-50%)
+function enemyDmg(e, base = e.dmg) {
+  let d = base;
+  if (e.frostT > 0 && e.frostSt) d *= 1 - 0.02 * e.frostSt;
+  if (e.weakT > 0) d *= 0.5;
+  return Math.max(1, Math.round(d));
+}
+
 function spawnEnemy(type, opts = {}) {
   const d = DATA.enemies[type];
   const a = rand(0, TAU), R = Math.hypot(W, H) / 2 + 90;
@@ -959,7 +1009,15 @@ function updEnemies(dt) {
         parts.push({ x: e.x + rand(-e.r, e.r) * 0.6, y: e.y + rand(-e.r, e.r) * 0.6, vx: rand(-12, 12), vy: rand(-55, -25), g: 0, life: 0.4, t: 0, size: rand(2, 3.5), col: pick(['#ff5a2a', '#ffb13d']) });
       }
     }
-    if (e.slowT > 0) e.slowT -= dt;
+    if (e.weakT > 0) e.weakT -= dt;
+    // 凍傷(切れたらスタック消滅)
+    if (e.frostT > 0) {
+      e.frostT -= dt;
+      if (e.frostT <= 0) e.frostSt = 0;
+      if (Math.random() < 0.08 && parts.length < 650) {
+        parts.push({ x: e.x + rand(-e.r, e.r) * 0.5, y: e.y + rand(-e.r, e.r) * 0.5, vx: rand(-10, 10), vy: rand(10, 40), g: 0, life: 0.4, t: 0, size: 2, col: '#9fdcff' });
+      }
+    }
     if (e.bleedT > 0) {
       e.bleedT -= dt;
       if (e.bleedT <= 0) e.bleedSt = 0; // 出血が切れたらスタック消滅
@@ -975,7 +1033,7 @@ function updEnemies(dt) {
       if (e.type === 'bat') wob = Math.sin(e.t * 7 + e.seed) * 0.55;
       else if (e.type === 'ghost') wob = Math.sin(e.t * 3 + e.seed) * 0.7;
       const aa = a + wob;
-      const spd = e.spd * (e.slowT > 0 ? e.slowMult : 1);
+      const spd = e.spd * (e.frostT > 0 && e.frostSt ? Math.max(0, 1 - 0.04 * e.frostSt) : 1); // 凍傷: スタック毎に移動速度-4%
       e.x += Math.cos(aa) * spd * dt;
       e.y += Math.sin(aa) * spd * dt;
     }
@@ -985,7 +1043,7 @@ function updEnemies(dt) {
     // プレイヤー接触
     const rr = e.r + 18;
     if (player.ifr <= 0 && !player.dead && dist2(e.x, e.y, player.x, player.y) < rr * rr) {
-      hurtPlayer(e.dmg);
+      hurtPlayer(enemyDmg(e));
     }
   }
   // 軽い相互分離
@@ -1084,7 +1142,7 @@ function bossAI(e, dt) {
       ai.ringT -= dt;
       if (ai.ringT <= 0) {
         ai.ringT = 4.6;
-        for (let i = 0; i < 16; i++) fireBall(e.x, e.y, (TAU / 16) * i + rand(0, 0.3), 150, 'ball', 14);
+        for (let i = 0; i < 16; i++) fireBall(e.x, e.y, (TAU / 16) * i + rand(0, 0.3), 150, 'ball', enemyDmg(e, 14));
         AudioMan.boom();
         addShake(5);
         burst(e.x, e.y, { n: 14, cols: ['#e8e6da', '#b8b4a0'], sp1: 180 });
@@ -1092,7 +1150,7 @@ function bossAI(e, dt) {
       ai.aimT -= dt;
       if (ai.aimT <= 0) {
         ai.aimT = 2.3;
-        for (let i = -1; i <= 1; i++) fireBall(e.x, e.y, a + i * 0.22, 230, 'ball', 14);
+        for (let i = -1; i <= 1; i++) fireBall(e.x, e.y, a + i * 0.22, 230, 'ball', enemyDmg(e, 14));
         AudioMan.shoot();
       }
       ai.sumT -= dt;
@@ -1129,7 +1187,7 @@ function bossAI(e, dt) {
           ai.spiralGap = 0.07;
           ai.spiralN--;
           ai.spA += 0.55;
-          fireBall(e.x, e.y, ai.spA, 190, 'scythe', 18);
+          fireBall(e.x, e.y, ai.spA, 190, 'scythe', enemyDmg(e, 18));
         }
       }
       if (!ai.enraged && e.hp < e.maxhp * 0.3) {
@@ -1531,9 +1589,24 @@ function chooseCard(i) {
 // ============================================================
 // HUD
 // ============================================================
+// HUDアイコン用ツールチップ(マウスホバーで名称と説明を表示)
+function attachTip(el, html) {
+  const move = e => {
+    ui.tip.innerHTML = html;
+    show(ui.tip);
+    const r = ui.tip.getBoundingClientRect();
+    ui.tip.style.left = Math.min(e.clientX + 16, W - r.width - 8) + 'px';
+    ui.tip.style.top = Math.min(e.clientY + 16, H - r.height - 8) + 'px';
+  };
+  el.addEventListener('mouseenter', move);
+  el.addEventListener('mousemove', move);
+  el.addEventListener('mouseleave', () => hide(ui.tip));
+}
+
 function rebuildIcons() {
   ui.icons.innerHTML = '';
-  const add = (icon, lv) => {
+  hide(ui.tip); // ホバー中に再構築されてもツールチップが残らないように
+  const add = (icon, lv, tipHTML) => {
     const d = document.createElement('div');
     d.className = 'wicon';
     const ic = spr('icons.' + icon);
@@ -1545,20 +1618,28 @@ function rebuildIcons() {
     b.className = 'wlv';
     b.textContent = lv;
     d.appendChild(b);
+    attachTip(d, tipHTML);
     ui.icons.appendChild(d);
   };
-  for (const k in player.weapons) add(DATA.weapons[k].icon, player.weapons[k].lv);
-  for (const k in player.passives) add(DATA.passives[k].icon, player.passives[k]);
+  for (const k in player.weapons) {
+    const w = DATA.weapons[k], lv = player.weapons[k].lv;
+    add(w.icon, lv, `<b>${w.name}</b><span class="tip-lv">Lv ${lv}</span><br>${w.desc}`);
+  }
+  for (const k in player.passives) {
+    const p = DATA.passives[k], lv = player.passives[k];
+    add(p.icon, lv, `<b>${p.name}</b><span class="tip-lv">Lv ${lv}</span><br>${p.desc}`);
+  }
   // アーティファクト(紫枠・レベルなし)
   for (const k in player.artifacts) {
+    const a = DATA.artifacts[k];
     const d = document.createElement('div');
     d.className = 'wicon art';
-    d.title = DATA.artifacts[k].name;
     const ic = spr('items.artifact', 10, 12);
     const cv = document.createElement('canvas');
     cv.width = ic.w; cv.height = ic.h;
     cv.getContext('2d').drawImage(ic.frames[0], 0, 0);
     d.appendChild(cv);
+    attachTip(d, `<b>${a.name}</b><span class="tip-art">ARTIFACT</span><br>${a.desc}`);
     ui.icons.appendChild(d);
   }
 }
@@ -1570,6 +1651,7 @@ function updateHUD() {
   ui.lvltext.textContent = 'LV ' + player.level;
   ui.timer.textContent = fmtTime(S.time);
   ui.kills.innerHTML = '&#9760; ' + S.kills;
+  ui.dmg.innerHTML = '&#9876; ' + Math.round(S.totalDmg).toLocaleString('en-US');
   if (S.comboT <= 0 && S.combo === 0) hide(ui.combo);
   if (S.boss && S.boss.hp > 0) {
     ui.bossfill.style.width = clamp(S.boss.hp / S.boss.maxhp * 100, 0, 100) + '%';

@@ -16,7 +16,10 @@
     <div id="xpbar"><div id="xpfill"></div><span id="lvltext">LV 1</span></div>
     <div id="hud-row">
       <div id="weapon-icons"></div>
-      <div id="kills">&#9760; 0</div>
+      <div id="hud-right">
+        <div id="kills">&#9760; 0</div>
+        <div id="dmgscore">&#9876; 0</div>
+      </div>
     </div>
     <div id="timer">00:00</div>
     <div id="combo" class="hidden">x0</div>
@@ -63,11 +66,16 @@
 
   <div id="pause-screen" class="screen hidden">
     <h2>PAUSED</h2>
+    <div id="volume-panel">
+      <div class="vol-row"><span>音楽</span><input type="range" id="vol-music" min="0" max="100" step="1"><span class="vol-val" id="vol-music-val"></span></div>
+      <div class="vol-row"><span>効果音</span><input type="range" id="vol-sfx" min="0" max="100" step="1"><span class="vol-val" id="vol-sfx-val"></span></div>
+    </div>
     <div class="pause-hint">ESC で再開 ・ M でミュート</div>
   </div>
 
   <div id="hurt-vignette"></div>
   <div id="flash"></div>
+  <div id="tooltip" class="hidden"></div>
 </div>
 
 <script src="js/sprites.js"></script>

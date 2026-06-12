@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## モデル運用
+トークン削減のため実装やテストなどのタスクの複雑さを評価し、サブエージョントのopusやsonnetの使用を検討する。(fable 5は出力トークンがコスト高い)
+
 ## プロジェクト概要
 
 「PIXEL SURVIVORS」— Vampire Survivors ライクのブラウザゲーム。純粋な HTML / CSS / JavaScript 製で、ビルドシステム・パッケージ依存・フレームワーク・テストは一切なし。コメント・UI テキストは日本語。元の要件は `要件.txt` を参照。
